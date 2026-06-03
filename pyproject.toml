@@ -1,0 +1,32 @@
+[project]
+name = "browsli"
+version = "0.1.0"
+description = "Interactive terminal browser for search and web browsing"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4",
+    "httpx",
+    "litellm",
+    "platformdirs",
+    "playwright",
+    "tavily-python",
+    "textual",
+]
+
+[project.scripts]
+browsli = "browsli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
