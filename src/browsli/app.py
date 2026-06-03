@@ -21,6 +21,12 @@ class DocumentView(Static):
         super().update(renderable)
 
 
+class LinkListItem(ListItem):
+    def __init__(self, link_id: int, label: Static) -> None:
+        super().__init__(label)
+        self.link_id = link_id
+
+
 class BrowsliApp(App):
     CSS = """
     #address { dock: top; }
@@ -73,7 +79,7 @@ class BrowsliApp(App):
         self.query_one("#address", Input).focus()
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
-        link_id = int(event.item.id.removeprefix("link-"))
+        link_id = event.item.link_id
         self._render_document(await self._session.open_link(link_id))
 
     def _render_document(self, document: BrowserDocument) -> None:
@@ -82,7 +88,7 @@ class BrowsliApp(App):
         link_list = self.query_one("#link-list", ListView)
         link_list.clear()
         for link in document.links:
-            link_list.append(ListItem(Static(f"[{link.id}] {link.text}\n{link.url}"), id=f"link-{link.id}"))
+            link_list.append(LinkListItem(link.id, Static(f"[{link.id}] {link.text}\n{link.url}")))
 
 
 def build_session() -> BrowserSession:
