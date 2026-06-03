@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 
 from ollama import AsyncClient, RequestError, ResponseError
 
@@ -41,4 +42,26 @@ class OllamaCloudProvider:
 
         message = response.get("message", {})
         return str(message.get("content", "") or "")
+
+    async def stream_complete(self, prompt: str) -> AsyncIterator[str]:
+        try:
+            async with asyncio.timeout(self._timeout):
+                stream = await self._client.chat(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    stream=True,
+                )
+                async for chunk in stream:
+                    message = chunk.get("message", {})
+                    content = str(message.get("content", "") or "")
+                    if content:
+                        yield content
+        except TimeoutError as error:
+            raise ProviderError("ollama-cloud", "timeout", "LLM request timed out") from error
+        except ResponseError as error:
+            raise ProviderError("ollama-cloud", "api", str(error)) from error
+        except RequestError as error:
+            raise ProviderError("ollama-cloud", "network", str(error)) from error
+        except Exception as error:
+            raise ProviderError("ollama-cloud", "api", str(error)) from error
 

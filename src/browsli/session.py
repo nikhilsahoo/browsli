@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from .extractor import HtmlExtractor
 from .links import LinkRegistry
 from .models import BrowserDocument, DocumentKind, ExtractedDocument, ProviderError, SearchResult
 from .providers.base import SearchProvider
 from .transformer import Transformer
+
+DocumentUpdate = Callable[[BrowserDocument], Awaitable[None]]
 
 
 class BrowserSession:
@@ -32,16 +36,16 @@ class BrowserSession:
     def current(self) -> BrowserDocument | None:
         return self._current
 
-    async def search(self, query: str) -> BrowserDocument:
+    async def search(self, query: str, *, on_update: DocumentUpdate | None = None) -> BrowserDocument:
         try:
             results = await self._search_provider.search(query)
-            doc = await self._search_document(query, results)
+            doc = await self._search_document(query, results, on_update=on_update)
         except ProviderError as error:
             doc = self._error_document(f"Search failed: {query}", query, str(error))
         self._navigate(doc)
         return doc
 
-    async def open_url(self, url: str) -> BrowserDocument:
+    async def open_url(self, url: str, *, on_update: DocumentUpdate | None = None) -> BrowserDocument:
         if url in self._cache:
             doc = self._cache[url]
             self._navigate(doc)
@@ -64,15 +68,13 @@ class BrowserSession:
                 self._navigate(doc)
                 return doc
 
-            transformed = await self._transformer.transform(extracted)
-            doc = BrowserDocument(
+            doc = await self._transform_document(
+                extracted,
                 kind=DocumentKind.PAGE,
                 title=extracted.title,
                 source=url,
-                content=transformed.content,
                 links=extracted.links,
-                transformed=transformed.transformed,
-                status=transformed.status,
+                on_update=on_update,
             )
             self._cache[url] = doc
         except ProviderError as error:
@@ -80,7 +82,9 @@ class BrowserSession:
         self._navigate(doc)
         return doc
 
-    async def open_link(self, link_id: int) -> BrowserDocument:
+    async def open_link(
+        self, link_id: int, *, on_update: DocumentUpdate | None = None
+    ) -> BrowserDocument:
         if self._current is None:
             return self._error_document("No document", "", "no current document")
         link = next((link for link in self._current.links if link.id == link_id), None)
@@ -88,7 +92,7 @@ class BrowserSession:
             return self._error_document(
                 f"Unknown link: {link_id}", self._current.source, f"unknown link {link_id}"
             )
-        return await self.open_url(link.url)
+        return await self.open_url(link.url, on_update=on_update)
 
     async def back(self) -> BrowserDocument:
         if self._current is not None and self._back:
@@ -103,7 +107,11 @@ class BrowserSession:
         return self._current or self._error_document("No document", "", "forward stack is empty")
 
     async def _search_document(
-        self, query: str, results: tuple[SearchResult, ...]
+        self,
+        query: str,
+        results: tuple[SearchResult, ...],
+        *,
+        on_update: DocumentUpdate | None = None,
     ) -> BrowserDocument:
         raw_links = [(result.title, result.url) for result in results]
         links = LinkRegistry.from_raw_links(raw_links).links
@@ -116,16 +124,50 @@ class BrowserSession:
             text="\n\n".join(lines),
             links=links,
         )
-        transformed = await self._transformer.transform(extracted)
-        return BrowserDocument(
+        return await self._transform_document(
+            extracted,
             kind=DocumentKind.SEARCH,
             title=f"Search: {query}",
             source=query,
-            content=transformed.content,
             links=links,
-            transformed=transformed.transformed,
-            status=transformed.status,
+            on_update=on_update,
         )
+
+    async def _transform_document(
+        self,
+        extracted: ExtractedDocument,
+        *,
+        kind: DocumentKind,
+        title: str,
+        source: str,
+        links,
+        on_update: DocumentUpdate | None,
+    ) -> BrowserDocument:
+        document: BrowserDocument | None = None
+        if on_update is None or not hasattr(self._transformer, "stream_transform"):
+            transformed = await self._transformer.transform(extracted)
+            return BrowserDocument(
+                kind=kind,
+                title=title,
+                source=source,
+                content=transformed.content,
+                links=links,
+                transformed=transformed.transformed,
+                status=transformed.status,
+            )
+
+        async for transformed in self._transformer.stream_transform(extracted):
+            document = BrowserDocument(
+                kind=kind,
+                title=title,
+                source=source,
+                content=transformed.content,
+                links=links,
+                transformed=transformed.transformed,
+                status=transformed.status,
+            )
+            await on_update(document)
+        return document or BrowserDocument(kind=kind, title=title, source=source, content="", links=links)
 
     def _navigate(self, doc: BrowserDocument) -> None:
         if self._current is not None:

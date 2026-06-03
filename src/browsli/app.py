@@ -32,11 +32,12 @@ class LinkListItem(ListItem):
 class BrowsliApp(App):
     CSS = """
     #address { dock: top; }
-    #document { width: 2fr; padding: 1; }
+    #document { width: 2fr; padding: 1; overflow-y: scroll; }
     #links { width: 1fr; border-left: solid $accent; }
     """
     BINDINGS = [
-        ("ctrl+p", "focus_address", "Command"),
+        Binding("ctrl+p", "focus_address", "Command"),
+        Binding("ctrl+q", "quit", "Quit"),
         Binding("alt+left", "back", "Back", priority=True),
         Binding("alt+right", "forward", "Forward", priority=True),
         Binding("alt-left", "back", "Back", priority=True),
@@ -70,9 +71,9 @@ class BrowsliApp(App):
         if not value:
             return
         if value.startswith(("http://", "https://")):
-            doc = await self._session.open_url(value)
+            doc = await self._session.open_url(value, on_update=self._render_document)
         else:
-            doc = await self._session.search(value)
+            doc = await self._session.search(value, on_update=self._render_document)
         await self._render_document(doc)
 
     async def action_back(self) -> None:
@@ -86,7 +87,9 @@ class BrowsliApp(App):
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         link_id = event.item.link_id
-        await self._render_document(await self._session.open_link(link_id))
+        await self._render_document(
+            await self._session.open_link(link_id, on_update=self._render_document)
+        )
 
     async def _render_document(self, document: BrowserDocument) -> None:
         status = f"\n\nStatus: {document.status}" if document.status else ""
@@ -113,6 +116,14 @@ def build_session() -> BrowserSession:
 
                 self._provider = build_llm_provider(self._config)
             return await self._provider.complete(prompt)
+
+        async def stream_complete(self, prompt: str):
+            if self._provider is None:
+                from .providers import build_llm_provider
+
+                self._provider = build_llm_provider(self._config)
+            async for chunk in self._provider.stream_complete(prompt):
+                yield chunk
 
     class LazySearchProvider:
         def __init__(self, config: ProviderConfig) -> None:

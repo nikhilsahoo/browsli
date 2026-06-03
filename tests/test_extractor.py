@@ -23,3 +23,25 @@ def test_extractor_marks_js_dependent_empty_page() -> None:
     assert doc.js_dependent is True
     assert doc.text == ""
 
+
+def test_extractor_preserves_code_blocks_as_markdown_fences() -> None:
+    html = """
+    <html><head><title>Fibonacci</title></head>
+    <body><main>
+      <h1>Generate Fibonacci in Python</h1>
+      <p>Use this implementation:</p>
+      <pre><code class="language-python">def fibonacci(n):
+    sequence = [0, 1]
+    for _ in range(2, n):
+        sequence.append(sequence[-1] + sequence[-2])
+    return sequence[:n]</code></pre>
+    </main></body></html>
+    """
+
+    doc = HtmlExtractor().extract("https://example.com/fibonacci", html)
+
+    assert "```python" in doc.text
+    assert "def fibonacci(n):" in doc.text
+    assert "sequence.append(sequence[-1] + sequence[-2])" in doc.text
+    assert doc.text.count("```") == 2
+

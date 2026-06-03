@@ -19,6 +19,27 @@ class FakeOpenAIResponses:
 
         return Response()
 
+    def stream(self, *, model: str, input: str):
+        self.calls.append({"model": model, "input": input, "stream": True})
+
+        class Event:
+            def __init__(self, delta: str) -> None:
+                self.type = "response.output_text.delta"
+                self.delta = delta
+
+        class Stream:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+            async def __aiter__(self):
+                yield Event("open")
+                yield Event("ai")
+
+        return Stream()
+
 
 class FakeOpenAIClient:
     def __init__(self) -> None:
@@ -41,6 +62,12 @@ class FakeOllamaClient:
 
     async def chat(self, *, model: str, messages: list[dict[str, str]], stream: bool):
         self.calls.append({"model": model, "messages": messages, "stream": stream})
+        if stream:
+            async def chunks():
+                yield {"message": {"content": "ollama"}}
+                yield {"message": {"content": " stream"}}
+
+            return chunks()
         return {"message": {"content": "ollama text"}}
 
 
@@ -55,6 +82,23 @@ async def test_openai_provider_uses_responses_api(monkeypatch) -> None:
 
     assert await provider.complete("Summarize") == "openai text"
     assert client.responses.calls == [{"model": "gpt-4o-mini", "input": "Summarize"}]
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_streams_responses_api_text(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    client = FakeOpenAIClient()
+    provider = OpenAIProvider(
+        ProviderConfig(name="openai", api_key_env="OPENAI_API_KEY", model="gpt-4o-mini"),
+        client=client,
+    )
+
+    assert [chunk async for chunk in provider.stream_complete("Summarize")] == ["open", "ai"]
+    assert client.responses.calls[-1] == {
+        "model": "gpt-4o-mini",
+        "input": "Summarize",
+        "stream": True,
+    }
 
 
 @pytest.mark.asyncio
@@ -90,6 +134,26 @@ async def test_ollama_cloud_provider_uses_native_client(monkeypatch) -> None:
             "stream": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_ollama_cloud_provider_streams_native_chat(monkeypatch) -> None:
+    monkeypatch.setenv("OLLAMA_API_KEY", "secret")
+    client = FakeOllamaClient()
+    provider = OllamaCloudProvider(
+        ProviderConfig(name="ollama-cloud", api_key_env="OLLAMA_API_KEY", model="gpt-oss:120b"),
+        client=client,
+    )
+
+    assert [chunk async for chunk in provider.stream_complete("Summarize")] == [
+        "ollama",
+        " stream",
+    ]
+    assert client.calls[-1] == {
+        "model": "gpt-oss:120b",
+        "messages": [{"role": "user", "content": "Summarize"}],
+        "stream": True,
+    }
 
 
 def test_llm_factory_rejects_codex_subscription_provider() -> None:

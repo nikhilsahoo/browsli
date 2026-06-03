@@ -8,16 +8,22 @@ from browsli.models import BrowserDocument, DocumentKind, Link
 class FakeSession:
     current = BrowserDocument(DocumentKind.PAGE, "Home", "local", "Welcome", ())
 
-    async def search(self, query: str):
+    async def search(self, query: str, *, on_update=None):
         self.current = BrowserDocument(DocumentKind.SEARCH, f"Search: {query}", query, "Results", ())
+        if on_update is not None:
+            await on_update(self.current)
         return self.current
 
-    async def open_url(self, url: str):
+    async def open_url(self, url: str, *, on_update=None):
         self.current = BrowserDocument(DocumentKind.PAGE, url, url, "Page", ())
+        if on_update is not None:
+            await on_update(self.current)
         return self.current
 
-    async def open_link(self, link_id: int):
+    async def open_link(self, link_id: int, *, on_update=None):
         self.current = BrowserDocument(DocumentKind.PAGE, "Link", str(link_id), "Linked", ())
+        if on_update is not None:
+            await on_update(self.current)
         return self.current
 
     async def back(self):
@@ -36,13 +42,13 @@ class LinkedFakeSession:
         (Link(1, "Next", "https://example.com/next"),),
     )
 
-    async def search(self, query: str):
+    async def search(self, query: str, *, on_update=None):
         return self.current
 
-    async def open_url(self, url: str):
+    async def open_url(self, url: str, *, on_update=None):
         return self.current
 
-    async def open_link(self, link_id: int):
+    async def open_link(self, link_id: int, *, on_update=None):
         self.current = BrowserDocument(
             DocumentKind.PAGE,
             "Second",
@@ -50,6 +56,8 @@ class LinkedFakeSession:
             "Second page",
             (Link(1, "Again", "https://example.com/again"),),
         )
+        if on_update is not None:
+            await on_update(self.current)
         return self.current
 
     async def back(self):
@@ -62,13 +70,13 @@ class LinkedFakeSession:
 class NavigationFakeSession:
     current = BrowserDocument(DocumentKind.PAGE, "Current", "local", "Current page", ())
 
-    async def search(self, query: str):
+    async def search(self, query: str, *, on_update=None):
         return self.current
 
-    async def open_url(self, url: str):
+    async def open_url(self, url: str, *, on_update=None):
         return self.current
 
-    async def open_link(self, link_id: int):
+    async def open_link(self, link_id: int, *, on_update=None):
         return self.current
 
     async def back(self):
@@ -124,6 +132,14 @@ async def test_app_uses_markdown_document_pane() -> None:
 
     async with app.run_test():
         assert app.query_one("#document", Markdown).renderable == "Welcome"
+
+
+def test_app_document_pane_is_scrollable() -> None:
+    assert "overflow-y: scroll" in BrowsliApp.CSS
+
+
+def test_app_exposes_quit_key_binding() -> None:
+    assert any(binding.key == "ctrl+q" and binding.description == "Quit" for binding in BrowsliApp.BINDINGS)
 
 
 @pytest.mark.asyncio

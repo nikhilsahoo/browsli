@@ -30,6 +30,19 @@ class FakeTransformer:
         return TransformResult(f"Condensed {document.title} [1]", True)
 
 
+class StreamingTransformer:
+    async def transform(self, document: ExtractedDocument):
+        from browsli.transformer import TransformResult
+
+        return TransformResult(f"Final {document.title}", True)
+
+    async def stream_transform(self, document: ExtractedDocument):
+        from browsli.transformer import TransformResult
+
+        yield TransformResult(f"Partial {document.title}", True)
+        yield TransformResult(f"Final {document.title}", True)
+
+
 @pytest.mark.asyncio
 async def test_session_search_open_link_and_back_forward() -> None:
     fetcher = FakeFetcher()
@@ -72,4 +85,20 @@ async def test_search_failure_keeps_error_document_usable() -> None:
 
     assert doc.kind == DocumentKind.ERROR
     assert "tavily api: down" in doc.status
+
+
+@pytest.mark.asyncio
+async def test_session_search_streams_partial_documents() -> None:
+    session = BrowserSession(
+        FakeSearch(), FakeFetcher(), None, StreamingTransformer(), browser_fallback_enabled=False
+    )
+    updates = []
+
+    async def on_update(doc):
+        updates.append(doc.content)
+
+    doc = await session.search("python", on_update=on_update)
+
+    assert updates == ["Partial Search: python", "Final Search: python"]
+    assert doc.content == "Final Search: python"
 
