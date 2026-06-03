@@ -38,11 +38,11 @@ async def test_transformer_falls_back_when_llm_fails() -> None:
         links=(),
     )
 
-    result = await Transformer(FakeLLM(ProviderError("litellm", "api", "down"))).transform(doc)
+    result = await Transformer(FakeLLM(ProviderError("openai", "api", "down"))).transform(doc)
 
     assert result.content == "Readable extracted text"
     assert result.transformed is False
-    assert result.status == "litellm api: down"
+    assert result.status == "openai api: down"
 
 
 @pytest.mark.asyncio

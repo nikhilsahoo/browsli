@@ -46,7 +46,7 @@ Core units:
 - `SearchProvider`: app interface for search queries. The first implementation is a Tavily-backed adapter.
 - `FetchRenderer`: retrieves page content. It fetches static HTML by default and uses a browser-render fallback only when enabled in config.
 - `Extractor`: converts fetched or rendered content into normalized text blocks plus discovered hyperlinks.
-- `LLMProvider`: app interface for text generation. The first implementation is a LiteLLM-backed adapter.
+- `LLMProvider`: app interface for text generation. Implementations use native provider SDKs behind adapters.
 - `Transformer`: asks the LLM to produce readable condensation while preserving key claims and meaningful links.
 - `LinkRegistry`: assigns stable numeric link IDs for the current transformed document and maps IDs to URLs and link text.
 - `TextualApp`: renders the search/address input, document view, link/status areas, and command palette.
@@ -59,11 +59,11 @@ Browsli should not rebuild provider plumbing.
 
 ### LLM
 
-Use LiteLLM behind `LLMProvider`.
+Use native provider adapters behind `LLMProvider`.
 
-LiteLLM provides a unified OpenAI-style interface for many model providers, including OpenAI, Anthropic, Gemini/Vertex, Bedrock, Azure, and Ollama, and normalizes many provider errors. Browsli config should specify a LiteLLM model string such as `openai/gpt-4o-mini`, `anthropic/...`, or `ollama/...`.
+The default adapter is OpenAI via the official `openai` Python SDK. Ollama Cloud is supported through Ollama's official Python client against `https://ollama.com` with `OLLAMA_API_KEY`. Codex and ChatGPT subscriptions are not API credentials and should produce an explicit unsupported-provider error that points users to the OpenAI API provider.
 
-The rest of the app should not depend on LiteLLM response objects. The adapter returns app-level response models.
+The rest of the app should not depend on provider response objects. Each adapter returns app-level text or raises app-level `ProviderError` values.
 
 ### Search
 
@@ -136,8 +136,8 @@ Use TOML config for non-secret settings and environment variables for API keys.
 Config should cover:
 
 - Search provider name, default `tavily`.
-- LLM provider adapter name, default `litellm`.
-- LiteLLM model string.
+- LLM provider adapter name, default `openai`.
+- Native provider model string.
 - Static fetch timeout.
 - LLM timeout.
 - Search timeout.
@@ -147,7 +147,7 @@ Config should cover:
 Secrets should come from environment variables, for example:
 
 - `TAVILY_API_KEY` for Tavily.
-- Provider-specific LiteLLM environment variables, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or other provider keys required by the chosen model.
+- Provider-specific environment variables, such as `OPENAI_API_KEY` for OpenAI or `OLLAMA_API_KEY` for Ollama Cloud.
 
 Missing required config or environment variables should produce explicit startup or first-use errors.
 
@@ -214,7 +214,7 @@ The MVP is complete when:
 - Navigable URLs are derived only from search results or extracted page links.
 - Non-secret provider settings are configurable in TOML.
 - API keys are read from environment variables.
-- LiteLLM and Tavily are used through adapters rather than embedded in UI logic.
+- Native LLM providers and Tavily are used through adapters rather than embedded in UI logic.
 - Static HTML fetch is the default page retrieval path.
 - Browser-render fallback is config-gated.
 - In-memory page cache prevents repeated work within one session.

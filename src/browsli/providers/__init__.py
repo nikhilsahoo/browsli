@@ -1,13 +1,25 @@
 from .base import LLMProvider, SearchProvider
+from .factory import build_llm_provider
 
-__all__ = ["LLMProvider", "LiteLLMProvider", "SearchProvider", "TavilySearchProvider"]
+__all__ = [
+    "LLMProvider",
+    "OpenAIProvider",
+    "OllamaCloudProvider",
+    "SearchProvider",
+    "TavilySearchProvider",
+    "build_llm_provider",
+]
 
 
 def __getattr__(name: str) -> object:
-    if name == "LiteLLMProvider":
-        from .litellm_provider import LiteLLMProvider
+    if name == "OpenAIProvider":
+        from .openai_provider import OpenAIProvider
 
-        return LiteLLMProvider
+        return OpenAIProvider
+    if name == "OllamaCloudProvider":
+        from .ollama_provider import OllamaCloudProvider
+
+        return OllamaCloudProvider
     if name == "TavilySearchProvider":
         from .tavily_provider import TavilySearchProvider
 

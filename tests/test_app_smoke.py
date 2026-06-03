@@ -1,4 +1,5 @@
 import pytest
+from textual.widgets import Markdown
 
 from browsli.app import BrowsliApp, build_session
 from browsli.models import BrowserDocument, DocumentKind, Link
@@ -58,6 +59,27 @@ class LinkedFakeSession:
         return self.current
 
 
+class NavigationFakeSession:
+    current = BrowserDocument(DocumentKind.PAGE, "Current", "local", "Current page", ())
+
+    async def search(self, query: str):
+        return self.current
+
+    async def open_url(self, url: str):
+        return self.current
+
+    async def open_link(self, link_id: int):
+        return self.current
+
+    async def back(self):
+        self.current = BrowserDocument(DocumentKind.PAGE, "Back", "local", "Back page", ())
+        return self.current
+
+    async def forward(self):
+        self.current = BrowserDocument(DocumentKind.PAGE, "Forward", "local", "Forward page", ())
+        return self.current
+
+
 @pytest.mark.asyncio
 async def test_app_launches_and_renders_initial_document() -> None:
     app = BrowsliApp(session=FakeSession())
@@ -83,7 +105,7 @@ async def test_app_can_render_reused_link_ids_after_opening_link() -> None:
     app = BrowsliApp(session=LinkedFakeSession())
 
     async with app.run_test():
-        app._render_document(
+        await app._render_document(
             BrowserDocument(
                 DocumentKind.PAGE,
                 "Second",
@@ -94,3 +116,29 @@ async def test_app_can_render_reused_link_ids_after_opening_link() -> None:
         )
 
         assert app.query_one("#document").renderable == "Second page"
+
+
+@pytest.mark.asyncio
+async def test_app_uses_markdown_document_pane() -> None:
+    app = BrowsliApp(session=FakeSession())
+
+    async with app.run_test():
+        assert app.query_one("#document", Markdown).renderable == "Welcome"
+
+
+@pytest.mark.asyncio
+async def test_alt_and_ctrl_arrow_keys_navigate_back_and_forward() -> None:
+    app = BrowsliApp(session=NavigationFakeSession())
+
+    async with app.run_test() as pilot:
+        await pilot.press("alt+left")
+        assert app.query_one("#document").renderable == "Back page"
+
+        await pilot.press("alt+right")
+        assert app.query_one("#document").renderable == "Forward page"
+
+        await pilot.press("ctrl+left")
+        assert app.query_one("#document").renderable == "Back page"
+
+        await pilot.press("ctrl+right")
+        assert app.query_one("#document").renderable == "Forward page"

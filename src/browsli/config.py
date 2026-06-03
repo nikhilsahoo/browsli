@@ -16,6 +16,7 @@ class ProviderConfig:
     name: str
     api_key_env: str | None = None
     model: str | None = None
+    base_url: str | None = None
     timeout_seconds: float = 30.0
 
     def require_api_key(self) -> str:
@@ -44,7 +45,12 @@ class AppConfig:
     def default(cls) -> AppConfig:
         return cls(
             search=ProviderConfig(name="tavily", api_key_env="TAVILY_API_KEY", timeout_seconds=20.0),
-            llm=ProviderConfig(name="litellm", model="openai/gpt-4o-mini", timeout_seconds=45.0),
+            llm=ProviderConfig(
+                name="openai",
+                api_key_env="OPENAI_API_KEY",
+                model="gpt-4o-mini",
+                timeout_seconds=45.0,
+            ),
             cache=CacheConfig(),
             static_fetch_timeout_seconds=20.0,
             browser_fallback_enabled=False,
@@ -66,6 +72,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     llm_data = data.get("llm", {})
     cache_data = data.get("cache", {})
     fetch_data = data.get("fetch", {})
+    llm_name = str(llm_data.get("name", default.llm.name))
 
     return AppConfig(
         search=ProviderConfig(
@@ -74,8 +81,12 @@ def load_config(path: Path | None = None) -> AppConfig:
             timeout_seconds=float(search_data.get("timeout_seconds", default.search.timeout_seconds)),
         ),
         llm=ProviderConfig(
-            name=str(llm_data.get("name", default.llm.name)),
+            name=llm_name,
+            api_key_env=_optional_str(
+                llm_data.get("api_key_env", _default_llm_api_key_env(llm_name, default))
+            ),
             model=_optional_str(llm_data.get("model", default.llm.model)),
+            base_url=_optional_str(llm_data.get("base_url", default.llm.base_url)),
             timeout_seconds=float(llm_data.get("timeout_seconds", default.llm.timeout_seconds)),
         ),
         cache=CacheConfig(mode=cache_data.get("mode", default.cache.mode)),
@@ -92,4 +103,12 @@ def _optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _default_llm_api_key_env(name: str, default: AppConfig) -> str | None:
+    if name == "ollama-cloud":
+        return "OLLAMA_API_KEY"
+    if name == "codex":
+        return None
+    return default.llm.api_key_env
 

@@ -1,6 +1,6 @@
 import pytest
 
-from browsli.config import AppConfig, ProviderConfig
+from browsli.config import AppConfig, ProviderConfig, load_config
 from browsli.models import ProviderError
 
 
@@ -8,7 +8,8 @@ def test_default_config_values() -> None:
     config = AppConfig.default()
 
     assert config.search.name == "tavily"
-    assert config.llm.name == "litellm"
+    assert config.llm.name == "openai"
+    assert config.llm.api_key_env == "OPENAI_API_KEY"
     assert config.cache.mode == "memory"
     assert config.browser_fallback_enabled is False
 
@@ -30,3 +31,24 @@ def test_provider_config_raises_clear_error_for_missing_api_key(monkeypatch) -> 
 
     assert error.value.category == "config"
     assert "TAVILY_API_KEY" in error.value.message
+
+
+def test_ollama_cloud_config_defaults_to_ollama_api_key() -> None:
+    from pathlib import Path
+
+    config_path = Path(".codex-test-config.toml")
+    try:
+        config_path.write_text(
+            """
+            [llm]
+            name = "ollama-cloud"
+            model = "gpt-oss:120b"
+            """,
+            encoding="utf-8",
+        )
+
+        config = load_config(config_path)
+
+        assert config.llm.api_key_env == "OLLAMA_API_KEY"
+    finally:
+        config_path.unlink(missing_ok=True)

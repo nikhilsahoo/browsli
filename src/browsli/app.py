@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input, ListItem, ListView, Static
+from textual.widgets import Footer, Header, Input, ListItem, ListView, Markdown, Static
 
 from .config import load_config
 from .fetch import BrowserRenderer, StaticFetcher
@@ -11,14 +12,15 @@ from .session import BrowserSession
 from .transformer import Transformer
 
 
-class DocumentView(Static):
+class DocumentView(Markdown):
     def __init__(self, *args: object, **kwargs: object) -> None:
+        kwargs.setdefault("open_links", False)
         super().__init__(*args, **kwargs)
         self.renderable: object = ""
 
     def update(self, renderable: object = "") -> None:
         self.renderable = renderable
-        super().update(renderable)
+        return super().update(str(renderable))
 
 
 class LinkListItem(ListItem):
@@ -35,8 +37,12 @@ class BrowsliApp(App):
     """
     BINDINGS = [
         ("ctrl+p", "focus_address", "Command"),
-        ("alt-left", "back", "Back"),
-        ("alt-right", "forward", "Forward"),
+        Binding("alt+left", "back", "Back", priority=True),
+        Binding("alt+right", "forward", "Forward", priority=True),
+        Binding("alt-left", "back", "Back", priority=True),
+        Binding("alt-right", "forward", "Forward", priority=True),
+        Binding("ctrl+left", "back", "Back", priority=True),
+        Binding("ctrl+right", "forward", "Forward", priority=True),
     ]
 
     def __init__(self, session: BrowserSession | None = None) -> None:
@@ -53,11 +59,11 @@ class BrowsliApp(App):
                 yield ListView(id="link-list")
         yield Footer()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         if self._session.current is not None:
-            self._render_document(self._session.current)
+            await self._render_document(self._session.current)
         else:
-            self.query_one("#document", DocumentView).update("Enter a search query or URL.")
+            await self.query_one("#document", DocumentView).update("Enter a search query or URL.")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         value = event.value.strip()
@@ -67,24 +73,24 @@ class BrowsliApp(App):
             doc = await self._session.open_url(value)
         else:
             doc = await self._session.search(value)
-        self._render_document(doc)
+        await self._render_document(doc)
 
     async def action_back(self) -> None:
-        self._render_document(await self._session.back())
+        await self._render_document(await self._session.back())
 
     async def action_forward(self) -> None:
-        self._render_document(await self._session.forward())
+        await self._render_document(await self._session.forward())
 
     def action_focus_address(self) -> None:
         self.query_one("#address", Input).focus()
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         link_id = event.item.link_id
-        self._render_document(await self._session.open_link(link_id))
+        await self._render_document(await self._session.open_link(link_id))
 
-    def _render_document(self, document: BrowserDocument) -> None:
+    async def _render_document(self, document: BrowserDocument) -> None:
         status = f"\n\nStatus: {document.status}" if document.status else ""
-        self.query_one("#document", DocumentView).update(f"{document.content}{status}")
+        await self.query_one("#document", DocumentView).update(f"{document.content}{status}")
         link_list = self.query_one("#link-list", ListView)
         link_list.clear()
         for link in document.links:
@@ -103,9 +109,9 @@ def build_session() -> BrowserSession:
 
         async def complete(self, prompt: str) -> str:
             if self._provider is None:
-                from .providers import LiteLLMProvider
+                from .providers import build_llm_provider
 
-                self._provider = LiteLLMProvider(self._config)
+                self._provider = build_llm_provider(self._config)
             return await self._provider.complete(prompt)
 
     class LazySearchProvider:
