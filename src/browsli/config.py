@@ -14,12 +14,15 @@ from .models import ProviderError
 @dataclass(frozen=True, slots=True)
 class ProviderConfig:
     name: str
+    api_key: str | None = None
     api_key_env: str | None = None
     model: str | None = None
     base_url: str | None = None
     timeout_seconds: float = 30.0
 
     def require_api_key(self) -> str:
+        if self.api_key:
+            return self.api_key
         if self.api_key_env is None:
             raise ProviderError(self.name, "config", f"{self.name} has no api_key_env configured")
         value = os.getenv(self.api_key_env)
@@ -77,6 +80,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     return AppConfig(
         search=ProviderConfig(
             name=str(search_data.get("name", default.search.name)),
+            api_key=_optional_str(search_data.get("api_key", None)),
             api_key_env=_optional_str(search_data.get("api_key_env", default.search.api_key_env)),
             timeout_seconds=float(search_data.get("timeout_seconds", default.search.timeout_seconds)),
         ),
@@ -85,6 +89,7 @@ def load_config(path: Path | None = None) -> AppConfig:
             api_key_env=_optional_str(
                 llm_data.get("api_key_env", _default_llm_api_key_env(llm_name, default))
             ),
+            api_key=_optional_str(llm_data.get("api_key", None)),
             model=_optional_str(llm_data.get("model", default.llm.model)),
             base_url=_optional_str(llm_data.get("base_url", default.llm.base_url)),
             timeout_seconds=float(llm_data.get("timeout_seconds", default.llm.timeout_seconds)),
