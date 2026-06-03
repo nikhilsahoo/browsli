@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Footer, Header, Input, ListItem, ListView, Static
+
+from .config import load_config
+from .fetch import BrowserRenderer, StaticFetcher
+from .models import BrowserDocument
+from .session import BrowserSession
+from .transformer import Transformer
+
+
+class DocumentView(Static):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.renderable: object = ""
+
+    def update(self, renderable: object = "") -> None:
+        self.renderable = renderable
+        super().update(renderable)
+
+
+class BrowsliApp(App):
+    CSS = """
+    #address { dock: top; }
+    #document { width: 2fr; padding: 1; }
+    #links { width: 1fr; border-left: solid $accent; }
+    """
+    BINDINGS = [
+        ("ctrl+p", "focus_address", "Command"),
+        ("alt-left", "back", "Back"),
+        ("alt-right", "forward", "Forward"),
+    ]
+
+    def __init__(self, session: BrowserSession | None = None) -> None:
+        super().__init__()
+        self._session = session or build_session()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Input(id="address")
+        with Horizontal():
+            yield DocumentView(id="document")
+            with Vertical(id="links"):
+                yield Static("Links")
+                yield ListView(id="link-list")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        if self._session.current is not None:
+            self._render_document(self._session.current)
+        else:
+            self.query_one("#document", DocumentView).update("Enter a search query or URL.")
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        value = event.value.strip()
+        if not value:
+            return
+        if value.startswith(("http://", "https://")):
+            doc = await self._session.open_url(value)
+        else:
+            doc = await self._session.search(value)
+        self._render_document(doc)
+
+    async def action_back(self) -> None:
+        self._render_document(await self._session.back())
+
+    async def action_forward(self) -> None:
+        self._render_document(await self._session.forward())
+
+    def action_focus_address(self) -> None:
+        self.query_one("#address", Input).focus()
+
+    async def on_list_view_selected(self, event: ListView.Selected) -> None:
+        link_id = int(event.item.id.removeprefix("link-"))
+        self._render_document(await self._session.open_link(link_id))
+
+    def _render_document(self, document: BrowserDocument) -> None:
+        status = f"\n\nStatus: {document.status}" if document.status else ""
+        self.query_one("#document", DocumentView).update(f"{document.content}{status}")
+        link_list = self.query_one("#link-list", ListView)
+        link_list.clear()
+        for link in document.links:
+            link_list.append(ListItem(Static(f"[{link.id}] {link.text}\n{link.url}"), id=f"link-{link.id}"))
+
+
+def build_session() -> BrowserSession:
+    from .providers import LiteLLMProvider, TavilySearchProvider
+
+    config = load_config()
+    llm = LiteLLMProvider(config.llm)
+    search = TavilySearchProvider(config.search)
+    transformer = Transformer(llm)
+    static_fetcher = StaticFetcher(config.static_fetch_timeout_seconds)
+    browser_fetcher = (
+        BrowserRenderer(config.static_fetch_timeout_seconds)
+        if config.browser_fallback_enabled
+        else None
+    )
+    return BrowserSession(
+        search,
+        static_fetcher,
+        browser_fetcher,
+        transformer,
+        browser_fallback_enabled=config.browser_fallback_enabled,
+    )
