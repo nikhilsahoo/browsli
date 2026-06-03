@@ -88,6 +88,31 @@ class NavigationFakeSession:
         return self.current
 
 
+class LongDocumentFakeSession:
+    current = BrowserDocument(
+        DocumentKind.PAGE,
+        "Long",
+        "local",
+        "\n\n".join(f"Line {index}" for index in range(200)),
+        (),
+    )
+
+    async def search(self, query: str, *, on_update=None):
+        return self.current
+
+    async def open_url(self, url: str, *, on_update=None):
+        return self.current
+
+    async def open_link(self, link_id: int, *, on_update=None):
+        return self.current
+
+    async def back(self):
+        return self.current
+
+    async def forward(self):
+        return self.current
+
+
 @pytest.mark.asyncio
 async def test_app_launches_and_renders_initial_document() -> None:
     app = BrowsliApp(session=FakeSession())
@@ -140,6 +165,17 @@ def test_app_document_pane_is_scrollable() -> None:
 
 def test_app_exposes_quit_key_binding() -> None:
     assert any(binding.key == "ctrl+q" and binding.description == "Quit" for binding in BrowsliApp.BINDINGS)
+
+
+@pytest.mark.asyncio
+async def test_app_document_pane_height_is_bounded_for_long_content() -> None:
+    app = BrowsliApp(session=LongDocumentFakeSession())
+
+    async with app.run_test(size=(100, 30)):
+        document = app.query_one("#document", Markdown)
+
+        assert document.size.height < 30
+        assert document.max_scroll_y > 0
 
 
 @pytest.mark.asyncio

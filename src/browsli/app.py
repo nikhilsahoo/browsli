@@ -32,8 +32,9 @@ class LinkListItem(ListItem):
 class BrowsliApp(App):
     CSS = """
     #address { dock: top; }
-    #document { width: 2fr; padding: 1; overflow-y: scroll; }
-    #links { width: 1fr; border-left: solid $accent; }
+    #content { height: 1fr; }
+    #document { width: 2fr; height: 1fr; padding: 1; overflow-y: scroll; }
+    #links { width: 1fr; height: 1fr; border-left: solid $accent; }
     """
     BINDINGS = [
         Binding("ctrl+p", "focus_address", "Command"),
@@ -53,7 +54,7 @@ class BrowsliApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Input(id="address")
-        with Horizontal():
+        with Horizontal(id="content"):
             yield DocumentView(id="document")
             with Vertical(id="links"):
                 yield Static("Links")
