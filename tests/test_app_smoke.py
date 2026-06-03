@@ -1,6 +1,6 @@
 import pytest
 
-from browsli.app import BrowsliApp
+from browsli.app import BrowsliApp, build_session
 from browsli.models import BrowserDocument, DocumentKind
 
 
@@ -34,3 +34,13 @@ async def test_app_launches_and_renders_initial_document() -> None:
         assert app.query_one("#document").renderable == "Welcome"
         await pilot.press("ctrl+p")
 
+
+@pytest.mark.asyncio
+async def test_build_session_defers_missing_search_api_key_until_first_use(monkeypatch) -> None:
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+
+    session = build_session()
+    doc = await session.search("python")
+
+    assert doc.kind == DocumentKind.ERROR
+    assert "TAVILY_API_KEY" in doc.status

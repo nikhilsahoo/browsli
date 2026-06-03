@@ -86,11 +86,37 @@ class BrowsliApp(App):
 
 
 def build_session() -> BrowserSession:
-    from .providers import LiteLLMProvider, TavilySearchProvider
+    from .config import ProviderConfig
+    from .models import SearchResult
+    from .providers import LLMProvider, SearchProvider
+
+    class LazyLLMProvider:
+        def __init__(self, config: ProviderConfig) -> None:
+            self._config = config
+            self._provider: LLMProvider | None = None
+
+        async def complete(self, prompt: str) -> str:
+            if self._provider is None:
+                from .providers import LiteLLMProvider
+
+                self._provider = LiteLLMProvider(self._config)
+            return await self._provider.complete(prompt)
+
+    class LazySearchProvider:
+        def __init__(self, config: ProviderConfig) -> None:
+            self._config = config
+            self._provider: SearchProvider | None = None
+
+        async def search(self, query: str) -> tuple[SearchResult, ...]:
+            if self._provider is None:
+                from .providers import TavilySearchProvider
+
+                self._provider = TavilySearchProvider(self._config)
+            return await self._provider.search(query)
 
     config = load_config()
-    llm = LiteLLMProvider(config.llm)
-    search = TavilySearchProvider(config.search)
+    llm = LazyLLMProvider(config.llm)
+    search = LazySearchProvider(config.search)
     transformer = Transformer(llm)
     static_fetcher = StaticFetcher(config.static_fetch_timeout_seconds)
     browser_fetcher = (
