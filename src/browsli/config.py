@@ -66,7 +66,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     if not target.exists():
         return AppConfig.default()
 
-    data = tomllib.loads(target.read_text(encoding="utf-8"))
+    data = tomllib.loads(target.read_text(encoding="utf-8-sig"))
     default = AppConfig.default()
     search_data = data.get("search", {})
     llm_data = data.get("llm", {})

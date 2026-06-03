@@ -52,3 +52,26 @@ def test_ollama_cloud_config_defaults_to_ollama_api_key() -> None:
         assert config.llm.api_key_env == "OLLAMA_API_KEY"
     finally:
         config_path.unlink(missing_ok=True)
+
+
+def test_load_config_accepts_utf8_bom_file() -> None:
+    from pathlib import Path
+
+    config_path = Path(".codex-test-config-bom.toml")
+    try:
+        config_path.write_text(
+            """
+            [llm]
+            name = "ollama-cloud"
+            model = "gemma4:31b-cloud"
+            api_key_env = "OLLAMA_API_KEY"
+            """,
+            encoding="utf-8-sig",
+        )
+
+        config = load_config(config_path)
+
+        assert config.llm.name == "ollama-cloud"
+        assert config.llm.model == "gemma4:31b-cloud"
+    finally:
+        config_path.unlink(missing_ok=True)
